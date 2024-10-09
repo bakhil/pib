@@ -1,0 +1,20 @@
+model:
+    name: PIBTransformer
+    d_model: 40
+    nhead: 4
+    num_layers: 5
+    dim_feedforward: 80
+    dropout: 0.1
+    ignore_initial: 100
+    ema_decay: 0.999
+    filename: ./data/trained/pib_transformer.pt
+train:
+    max_epochs: 1000
+    root_dir: ./lightning_logs
+    batch_size: 1024
+    optimizer: Adam
+    lr: 0.001
+data:
+    jsonfile: ./data/icassp-person-in-bed-track-1/train.json
+    train_validate_test_split: [14, 3, 3]
+    train_seq_len: 1000
