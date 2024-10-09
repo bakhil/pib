@@ -1,54 +1,20 @@
 import torch
 import torch.nn as nn
-import lightning as L
 import torch.nn.functional as F
-import copy
+import utils
 
-class PIBMainModel(L.LightningModule):
-    def __init__(self, ignore_initial: int = 100, ema_decay: float = 0.999):
-        super().__init__()
-        self.ignore_initial = ignore_initial
-        self.save_hyperparameters()
-        self.ema_copy = None
-        self.ema_decay = ema_decay
-
-    def training_step(self, batch, batch_idx):
-        accel, ts, labels = batch
-        output = self(accel, ts)
-        loss = F.cross_entropy(output[:, self.ignore_initial:], labels[:, self.ignore_initial:])
-        self.log('train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        accel, ts, labels = batch
-        model_output = self.ema_copy(accel, ts)
-        output = torch.where(model_output[..., 0] > model_output[..., 1], 0, 1)
-        correct = torch.sum(output[:, self.ignore_initial:] == labels[:, self.ignore_initial:], dim=1) / (output.shape[1] - self.ignore_initial)
-        avg_correct = torch.mean(correct)
-        pos_pred_avg = torch.mean(correct[correct > 0.5])
-        neg_pred_avg = torch.mean(correct[correct <= 0.5])
-        self.log('val_acc', avg_correct)
-        self.log('val_pos_pred_avg', pos_pred_avg)
-        self.log('val_neg_pred_avg', neg_pred_avg)
-
-    def on_before_zero_grad(self, *args, **kwargs):
-        if self.ema_copy is None:
-            self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
-        self.ema_copy.update_parameters(self)
-
-
-# Use @register decorator to register the model.
+# Use @register_model decorator to register the model.
 # Model can then be obtained using get_model(model_name, **kwargs)
 # with model_name from the config file.
 _model_list = {}
-def register(cls):
+def register_model(cls):
     _model_list[cls.__name__] = cls
     return cls
 def get_model(model_name, **kwargs):
     return _model_list[model_name](**kwargs)
 
-@register
-class PIBTransformer(PIBMainModel):
+@register_model
+class PIBTransformer(utils.PIBMainModel):
     def __init__(self, d_model, nhead, num_layers, dim_feedforward, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
         self.normalize_input = nn.BatchNorm1d(3)
