@@ -26,17 +26,20 @@ class PIBTransformer(utils.PIBMainModel):
         self.output_projection = nn.Linear(d_model, 2)
 
     def forward(self, accel, ts=None):
-        x = self.normalize_projection(self.input_projection(self.normalize_input(accel)))
+        accel_reshaped = torch.einsum('nlc->ncl', accel)
+        accel_normalized = torch.einsum('ncl->nlc', self.normalize_input(accel_reshaped))
+        accel_projected_reshaped = torch.einsum('nlc->ncl', self.input_projection(accel_normalized))
+        x = torch.einsum('ncl->nlc', self.normalize_projection(accel_projected_reshaped))
 
         # Add positional encoding
-        pos = torch.arange(x.shape[1], device=x.device)[:, None]
-        den = torch.exp(-torch.arange(x.shape[2], device=x.device)[None, :] * torch.log(torch.tensor([10000])).item() / x.shape[2])
+        pos = torch.arange(x.shape[1]-1, -1, -1, device=x.device)[:, None]
+        den = torch.exp(-torch.arange(0, x.shape[2], 2, device=x.device)[None, :] * torch.log(torch.tensor([10000])).item() / x.shape[2]) 
         pos_enc = torch.zeros(x.shape[1], x.shape[2], device=x.device)
         pos_enc[:, 0::2] = torch.sin(pos * den)
         pos_enc[:, 1::2] = torch.cos(pos * den)
         pos_enc = pos_enc[None, :, :]
         x = x + pos_enc
 
-        transformer_output = self.transformer(x, mask=nn.Transformer.generate_square_subsequent_mask(x.shape[1], device=x.device))
+        transformer_output = self.transformer(x, mask=nn.Transformer.generate_square_subsequent_mask(x.shape[1], device=x.device), is_causal=True)
         return self.output_projection(transformer_output)
         

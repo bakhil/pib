@@ -13,19 +13,24 @@ if __name__ == '__main__':
 
     if args.lightning_seed is not None:
         L.seed_everything(args.lightning_seed)
-
-    pib_model = get_model(args.model_name, **args.model)
-
-    dataset = PIBDataset(mode=args.mode, **args.data)
-    loader = DataLoader(dataset)
     
     if args.mode == 'train':
-        dataset_val = PIBDataset(mode='validate', **args.data)
-        loader_val = DataLoader(dataset_val)
+        pib_model = get_model(args.model.name, **args.model)
+        
+        dataset = PIBDataset(mode=args.mode, data_path=args.data.data_path, train_validate_test_split=args.data.train_validate_test_split)
+        loader = DataLoader(dataset, batch_size=args.data.train_batch_size, shuffle=True)
+        dataset_val = PIBDataset(mode='validate', data_path=args.data.data_path, train_validate_test_split=args.data.train_validate_test_split)
+        loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
+
         trainer = L.Trainer(max_epochs=args.train.max_epochs, default_root_dir=args.train.root_dir)
-        if args.model.fresh_init:
-            trainer.fit(pib_model, loader, loader_val)
-        elif args.model.from_checkpoint is not None:
+        if args.model.from_checkpoint is not None:
             trainer.fit(pib_model, loader, loader_val, ckpt_path=args.model.from_checkpoint)
         else:
-            trainer.fit(pib_model, loader, loader_val, ckpt_path='last')
+            trainer.fit(pib_model, loader, loader_val)
+    
+    elif args.mode == 'validate':
+        raise NotImplementedError('Validate mode not implemented yet')
+    elif args.mode == 'test':
+        raise NotImplementedError('Test mode not implemented yet')
+    else:
+        raise ValueError(f'Invalid mode {args.mode}')

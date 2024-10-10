@@ -128,3 +128,9 @@ cython_debug/
 
 # data folder
 data/
+
+# results folder
+results/
+
+# slurm files
+*.slurm
