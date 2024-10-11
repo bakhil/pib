@@ -132,6 +132,7 @@ def get_parser():
     parser.add_argument('--train.max_epochs',               help='max number of epochs', type=int)
     parser.add_argument('--train.root_dir',                 help='root directory for the dataset')
     parser.add_argument('--train.accumulate_grad_batches',  help='grad accumulate batches', type=int, default=1)
+    parser.add_argument('--train.precision',                help='trainer precision mode', type=str, default='32')
 
     # Data arguments
     parser.add_argument('--data.data_path',                 help='json file path for the dataset')

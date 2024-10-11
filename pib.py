@@ -23,7 +23,8 @@ if __name__ == '__main__':
         loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
 
         trainer = L.Trainer(max_epochs=args.train.max_epochs, default_root_dir=args.train.root_dir, 
-                                profiler='simple', accumulate_grad_batches=args.train.accumulate_grad_batches)
+                                profiler='simple', accumulate_grad_batches=args.train.accumulate_grad_batches,
+                                precision=args.train.precision)
         if args.model.from_checkpoint is not None:
             trainer.fit(pib_model, loader, loader_val, ckpt_path=args.model.from_checkpoint)
         else:

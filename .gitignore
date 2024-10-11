@@ -131,6 +131,7 @@ data/
 
 # results folder
 results/
+*.csv
 
 # slurm files and outputs
 *.slurm
