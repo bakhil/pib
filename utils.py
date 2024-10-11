@@ -35,14 +35,37 @@ class PIBMainModel(L.LightningModule):
         for i in range(self.train_seq_length-1, accel.shape[1]):
             start_index = max(0, i-self.train_seq_length+1)
             model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
-        output = torch.where(model_output[..., 0] > model_output[..., 1], 0, 1)
-        correct = torch.sum(output[:, self.train_seq_length-1:] == labels[:, self.train_seq_length-1:], dim=1) / (output.shape[1] - self.train_seq_length + 1)
-        avg_correct = torch.mean(correct)
-        pos_pred_avg = torch.mean(correct[correct > 0.5])
-        neg_pred_avg = torch.mean(correct[correct <= 0.5])
-        self.log('val_acc', avg_correct.item())
-        self.log('val_pos_pred_avg', pos_pred_avg.item())
-        self.log('val_neg_pred_avg', neg_pred_avg.item())
+        model_llr = model_output[..., 1] - model_output[..., 0]
+        output = torch.where(model_llr > 0, 1, 0)
+        output_seg = torch.where(torch.mean(model_llr[:, self.train_seq_length-1:], dim=1) > 0, 1, 0)[:, None]
+
+        correct = torch.mean((output[:, self.train_seq_length-1:] == labels[:, self.train_seq_length-1:])*1.0)
+        correct_seg = torch.mean((labels == output_seg)*1.0)
+        
+        self.log('val_acc', correct.item())
+        self.log('val_acc_segmented', correct_seg.item())
+        self.log('val_abs_llr', torch.mean(torch.abs(model_llr[:, self.train_seq_length-1:])).item())
+
+    def test_step(self, batch, batch_idx):
+        if self.ema_copy is None:
+            self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            for p in self.ema_copy.parameters():
+                p.requires_grad = False
+        accel, ts, labels = batch
+        model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
+        with torch.no_grad():
+            model_output[:, :self.train_seq_length, :] = self.ema_copy(accel[:, :self.train_seq_length], ts[:, :self.train_seq_length])
+            for i in range(self.train_seq_length, accel.shape[1]):
+                model_output[:, i, :] = self.ema_copy(accel[:, i-self.train_seq_length+1:i+1], ts[:, i-self.train_seq_length+1:i+1])[:, -1, :].detach()
+        model_llr = model_output[..., 1] - model_output[..., 0]
+        output = torch.where(model_llr > 0, 1, 0)
+        output_seg = torch.where(torch.mean(model_llr[:, self.train_seq_length-1:], dim=1) > 0, 1, 0)[:, None]
+
+        correct = torch.mean((output[:, self.train_seq_length-1:] == labels[:, self.train_seq_length-1:])*1.0)
+        correct_seg = torch.mean((labels == output_seg)*1.0)
+
+        self.log('test_acc', correct.item())
+        self.log('test_acc_segmented', correct_seg.item())
 
     def configure_optimizers(self):
         if self.ema_copy is not None:
@@ -57,6 +80,15 @@ class PIBMainModel(L.LightningModule):
             for p in self.ema_copy.parameters():
                 p.requires_grad = False
         self.ema_copy.update_parameters(self)
+
+    # This is needed for ema_copy to be loaded
+    # Gives error otherwise
+    def load_state_dict(self, *args, **kwargs):
+        if self.ema_copy is None:
+            self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            for p in self.ema_copy.parameters():
+                p.requires_grad = False
+        super().load_state_dict(*args, **kwargs)
 
 # Argument parser for the main script
 def get_parser():
