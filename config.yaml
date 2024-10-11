@@ -5,7 +5,7 @@ model:
     nhead: 4
     num_layers: 5
     dim_feedforward: 50
-    dropout: 0.1
+    dropout: 0.01
     ignore_initial: 99
     ema_decay: 0.999
     optimizer: Adam
@@ -14,6 +14,7 @@ model:
 train:
     max_epochs: 3
     root_dir: ./results/transformer
+    accumulate_grad_batches: 8
 data:
     data_path: ./data/icassp-person-in-bed-track-1/train.json
     train_validate_test_split: [14, 3, 3]

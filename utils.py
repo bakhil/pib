@@ -2,6 +2,7 @@ import torch
 import lightning as L
 from lightning.pytorch.cli import LightningArgumentParser
 import torch.nn.functional as F
+import copy
 
 # Common functions for all models
 # Models in model.py can then inherit from this class
@@ -27,7 +28,8 @@ class PIBMainModel(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         if self.ema_copy is None:
-            self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            # self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            self.ema_copy = copy.deepcopy(self)
             for p in self.ema_copy.parameters():
                 p.requires_grad = False
         accel, ts, labels = batch
@@ -48,7 +50,8 @@ class PIBMainModel(L.LightningModule):
 
     def test_step(self, batch, batch_idx):
         if self.ema_copy is None:
-            self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            # self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            self.ema_copy = copy.deepcopy(self)
             for p in self.ema_copy.parameters():
                 p.requires_grad = False
         accel, ts, labels = batch
@@ -76,16 +79,26 @@ class PIBMainModel(L.LightningModule):
 
     def on_train_batch_end(self, *args, **kwargs):
         if self.ema_copy is None:
-            self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            # self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            self.ema_copy = copy.deepcopy(self)
             for p in self.ema_copy.parameters():
                 p.requires_grad = False
-        self.ema_copy.update_parameters(self)
+        # self.ema_copy.update_parameters(self)
+        model_state_dict = self.state_dict()
+        for param_name, ema_param in self.ema_copy.state_dict().items():
+            model_param = model_state_dict[param_name]
+            if torch.is_floating_point(ema_param):
+                ema_param.lerp_(model_param, 1.-self.ema_decay)
+                ema_param.requires_grad = False
+            else:
+                ema_param.copy_(model_param)
 
     # This is needed for ema_copy to be loaded
     # Gives error otherwise
     def load_state_dict(self, *args, **kwargs):
         if self.ema_copy is None:
-            self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            # self.ema_copy = torch.optim.swa_utils.AveragedModel(self, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(self.ema_decay))
+            self.ema_copy = copy.deepcopy(self)
             for p in self.ema_copy.parameters():
                 p.requires_grad = False
         super().load_state_dict(*args, **kwargs)
@@ -116,8 +129,9 @@ def get_parser():
 
 
     # Training arguments
-    parser.add_argument('--train.max_epochs',      help='max number of epochs', type=int)
-    parser.add_argument('--train.root_dir',        help='root directory for the dataset')
+    parser.add_argument('--train.max_epochs',               help='max number of epochs', type=int)
+    parser.add_argument('--train.root_dir',                 help='root directory for the dataset')
+    parser.add_argument('--train.accumulate_grad_batches',  help='grad accumulate batches', type=int, default=1)
 
     # Data arguments
     parser.add_argument('--data.data_path',                 help='json file path for the dataset')
