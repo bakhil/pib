@@ -17,15 +17,15 @@ class PIBMainModel(L.LightningModule):
         self.optimizer = optimizer
         self.lr = lr
         self.train_seq_length = train_seq_length
-        self.num_labels = torch.tensor([0, 0], dtype=torch.long, device=self.device)
+        self.register_buffer('num_train_labels', torch.tensor([0, 0], dtype=torch.long))
         self.save_hyperparameters()
 
     def training_step(self, batch, batch_idx):
         accel, ts, labels = batch
         output = self(accel, ts)
-        self.num_labels += torch.tensor([torch.sum(labels == 0), torch.sum(labels == 1)], 
-                                        dtype=torch.long, device=self.num_labels.device)
-        weights = self.num_labels*2.0 / torch.sum(self.num_labels)
+        self.num_train_labels[0] += torch.sum(labels == 0)
+        self.num_train_labels[1] += torch.sum(labels == 1)
+        weights = self.num_train_labels*2.0 / torch.sum(self.num_train_labels)
         loss = F.cross_entropy(output[:, self.ignore_initial:].reshape(-1, 2), labels[:, self.ignore_initial:].reshape(-1), 
                                 weight=weights)
         self.log('train_loss', loss.item())
