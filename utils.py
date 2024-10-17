@@ -156,6 +156,7 @@ def get_parser():
     parser.add_argument('--model.optimizer',        help='optimizer will be torch.optim.<model.optimizer>', type=str)
     parser.add_argument('--model.lr',               help='learning rate', type=float)
     parser.add_argument('--model.train_seq_len',    help='sequence length for training', type=int)
+    parser.add_argument('--model.fil_size',         help='filter size for PIBFilTransformer', type=int)
 
 
     # Training arguments

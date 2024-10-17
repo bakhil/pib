@@ -15,3 +15,5 @@ Version no.,                 model,         Loss, epochs trained, grad accu, bat
    DGX-7934,  PIBTransformer (AMP),  simple loss,              8,         1,   256,       str,      1000,     35:00 (A100),   88.95,        -0.00
 CC-15676794,  PIBTransformer (AMP),     weighted,              3,         1,   256,       seg,      1000,     21:30 (L40S),   98.62,        99.55
    DGX-7939,  PIBTransformer (AMP),     weighted,              3,         1,   256,       seg,      1000,     35:05 (A100),   98.86,        99.66
+CC-15677197,  PIBTransformer (AMP),     weighted,          (3+)3,         1,   256,       str,      1000,     21:33 (L40S),   91.49,        -0.00
+CC-15677196,  PIBTransformer (AMP),     weighted,              4,         1,   256,       seg,      1000,     21:00 (L40S),   98.94,        99.55
