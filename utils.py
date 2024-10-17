@@ -17,12 +17,17 @@ class PIBMainModel(L.LightningModule):
         self.optimizer = optimizer
         self.lr = lr
         self.train_seq_length = train_seq_length
+        self.num_labels = torch.tensor([0, 0], dtype=torch.long, device=self.device)
         self.save_hyperparameters()
 
     def training_step(self, batch, batch_idx):
         accel, ts, labels = batch
         output = self(accel, ts)
-        loss = F.cross_entropy(output[:, self.ignore_initial:].reshape(-1, 2), labels[:, self.ignore_initial:].reshape(-1))
+        self.num_labels += torch.tensor([torch.sum(labels == 0), torch.sum(labels == 1)], 
+                                        dtype=torch.long, device=self.num_labels.device)
+        weights = self.num_labels*2.0 / torch.sum(self.num_labels)
+        loss = F.cross_entropy(output[:, self.ignore_initial:].reshape(-1, 2), labels[:, self.ignore_initial:].reshape(-1), 
+                                weight=weights)
         self.log('train_loss', loss.item())
         return loss
 
@@ -44,9 +49,34 @@ class PIBMainModel(L.LightningModule):
         correct = torch.mean((output[:, self.train_seq_length-1:] == labels[:, self.train_seq_length-1:])*1.0)
         correct_seg = torch.mean((labels == output_seg)*1.0)
         
+        total_positives = torch.sum(torch.mean(labels*1.0, dim=1))
+        total_negatives = torch.sum(1-torch.mean(labels*1.0, dim=1))
+
+        true_positives = torch.sum(output_seg[torch.mean(labels*1.0, dim=1) == 1])
+        true_negatives = torch.sum(1-output_seg[torch.mean(labels*1.0, dim=1) == 0])
+
+        tpr = true_positives / total_positives
+        tnr = true_negatives / total_negatives
+        acc_balanced = (tpr + tnr) / 2.
+
         self.log('val_acc', correct.item())
         self.log('val_acc_segmented', correct_seg.item())
         self.log('val_abs_llr', torch.mean(torch.abs(model_llr[:, self.train_seq_length-1:])).item())
+        self.log('val_tpr', tpr.item())
+        self.log('val_tnr', tnr.item())
+        self.log('val_acc_balanced', acc_balanced.item())
+
+    def predict_step(self, batch, batch_idx):
+        accel, ts, labels = batch
+        model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
+        # model_output[:, :self.train_seq_length, :] = self.ema_copy(accel[:, :self.train_seq_length], ts[:, :self.train_seq_length]).detach()
+        for i in range(self.train_seq_length-1, accel.shape[1]):
+            start_index = max(0, i-self.train_seq_length+1)
+            model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
+        model_llr = model_output[..., 1] - model_output[..., 0]
+        output = torch.where(model_llr > 0, 1, 0)
+
+        return output, labels
 
     def test_step(self, batch, batch_idx):
         if self.ema_copy is None:
@@ -110,7 +140,7 @@ def get_parser():
     # Main script arguments
     parser.add_argument('--config',             help='config file path', action='config', required=True)
     parser.add_argument('--task',               help='segmented or streaming', choices=['segmented', 'streaming'], default='segmented')
-    parser.add_argument('--mode',               help='train/validate/test', choices=['train', 'validate', 'test'], required=True)
+    parser.add_argument('--mode',               help='train/validate/test', choices=['train', 'validate', 'test', 'validate_save'], required=True)
     parser.add_argument('--lightning_seed',     help='random seed for lightning', type=int)
 
     # Model arguments
@@ -139,5 +169,8 @@ def get_parser():
     parser.add_argument('--data.train_validate_test_split', help='train/validate/test ratio as integers', type=list[int])
     parser.add_argument('--data.train_batch_size',          help='batch size for training', type=int)
     parser.add_argument('--data.validate_batch_size',       help='batch size for validation', type=int)
+
+    # Save arguments
+    parser.add_argument('--save.plot_path',                 help='path to save plots in validate_save mode')
 
     return parser

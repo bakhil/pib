@@ -42,5 +42,33 @@ if __name__ == '__main__':
 
     elif args.mode == 'test':
         raise NotImplementedError('Test mode not implemented yet')
+    
+    elif args.mode == 'validate_save':
+        pib_model = get_model(args.model.name, **args.model)
+
+        dataset_val = PIBDataset(mode='validate', data_path=args.data.data_path, train_validate_test_split=args.data.train_validate_test_split)
+        loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
+        if args.model.from_checkpoint is None:
+            raise ValueError('Checkpoint file path not provided for validate_save mode')
+        trainer = L.Trainer(default_root_dir=args.train.root_dir)
+        returned_values = trainer.predict(pib_model, loader_val, ckpt_path=args.model.from_checkpoint, return_predictions=True)
+        outputs = [returned_value[0] for returned_value in returned_values]
+        labels = [returned_value[1] for returned_value in returned_values]
+        if args.save.plot_path:
+            import matplotlib.pyplot as plt
+            i = 0
+            while i < len(outputs[0]):
+                if labels[1][i][0] == 0:
+                    i += 1
+                else:
+                    break
+            plt.plot(outputs[1][i], label='outputs')
+            plt.plot(labels[1][i], label='original')
+            plt.legend(fontsize='x-large')
+            plt.grid()
+            plt.xlabel('Time', fontsize='x-large')
+            plt.ylabel('Prediction', fontsize='x-large')
+            plt.savefig(args.save.plot_path)
+
     else:
         raise ValueError(f'Invalid mode {args.mode}')

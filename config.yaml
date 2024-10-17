@@ -20,4 +20,4 @@ data:
     data_path: ./data/icassp-person-in-bed-track-1/train.json
     train_validate_test_split: [14, 3, 3]
     train_batch_size: 256
-    validate_batch_size: 256
+    validate_batch_size: 512
