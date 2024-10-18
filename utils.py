@@ -75,7 +75,7 @@ class PIBMainModel(L.LightningModule):
         model_llr = model_output[..., 1] - model_output[..., 0]
         output = torch.where(model_llr > 0, 1, 0)
 
-        return output, labels
+        return output, labels, model_llr
 
     def test_step(self, batch, batch_idx):
         if self.ema_copy is None:

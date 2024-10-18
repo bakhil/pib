@@ -50,20 +50,23 @@ if __name__ == '__main__':
         loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
         if args.model.from_checkpoint is None:
             raise ValueError('Checkpoint file path not provided for validate_save mode')
-        trainer = L.Trainer(default_root_dir=args.train.root_dir)
+        trainer = L.Trainer(default_root_dir=args.train.root_dir, enable_checkpointing=False, logger=False)
         returned_values = trainer.predict(pib_model, loader_val, ckpt_path=args.model.from_checkpoint, return_predictions=True)
         outputs = [returned_value[0] for returned_value in returned_values]
         labels = [returned_value[1] for returned_value in returned_values]
+        model_llrs = [returned_value[2] for returned_value in returned_values]
         if args.save.plot_path:
             import matplotlib.pyplot as plt
             i = 0
+            '''
             while i < len(outputs[0]):
-                if labels[1][i][0] == 0:
+                if labels[0][i][0] == 1:
                     i += 1
                 else:
                     break
-            plt.plot(outputs[1][i], label='outputs')
-            plt.plot(labels[1][i], label='original')
+            '''
+            plt.plot(model_llrs[0][i], label='Model LLR')
+            plt.plot(labels[0][i], label='original')
             plt.legend(fontsize='x-large')
             plt.grid()
             plt.xlabel('Time', fontsize='x-large')
