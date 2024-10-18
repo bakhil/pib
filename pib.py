@@ -37,7 +37,7 @@ if __name__ == '__main__':
         loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
         if args.model.from_checkpoint is None:
             raise ValueError('Checkpoint file path not provided for validation mode')
-        trainer = L.Trainer(default_root_dir=args.train.root_dir)
+        trainer = L.Trainer(default_root_dir=args.train.root_dir, enable_checkpointing=False, logger=False)
         trainer.validate(pib_model, loader_val, ckpt_path=args.model.from_checkpoint)
 
     elif args.mode == 'test':
