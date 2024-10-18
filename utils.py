@@ -25,9 +25,8 @@ class PIBMainModel(L.LightningModule):
         output = self(accel, ts)
         self.num_train_labels[0] += torch.sum(labels == 0)
         self.num_train_labels[1] += torch.sum(labels == 1)
-        weights = self.num_train_labels*2.0 / torch.sum(self.num_train_labels)
-        loss = F.cross_entropy(output[:, self.ignore_initial:].reshape(-1, 2), labels[:, self.ignore_initial:].reshape(-1), 
-                                weight=weights)
+        # weights = self.num_train_labels*2.0 / torch.sum(self.num_train_labels)
+        loss = F.cross_entropy(output[:, self.ignore_initial:].reshape(-1, 2), labels[:, self.ignore_initial:].reshape(-1))
         self.log('train_loss', loss.item())
         return loss
 
@@ -157,6 +156,8 @@ def get_parser():
     parser.add_argument('--model.lr',               help='learning rate', type=float)
     parser.add_argument('--model.train_seq_len',    help='sequence length for training', type=int)
     parser.add_argument('--model.fil_size',         help='filter size for PIBFilTransformer', type=int)
+    parser.add_argument('--model.cutoff',           help='cutoff frequency for PIBFilTransformer', type=float)
+    parser.add_argument('--model.fs',               help='sampling frequency for PIBFilTransformer', type=float)
 
 
     # Training arguments
