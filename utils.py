@@ -45,7 +45,8 @@ class PIBMainModel(L.LightningModule):
         output = torch.where(model_llr > 0, 1, 0)
         output_seg = torch.where(torch.mean(model_llr[:, self.train_seq_length-1:], dim=1) > 0, 1, 0)[:, None]
 
-        correct = torch.mean((output[:, self.train_seq_length-1:] == labels[:, self.train_seq_length-1:])*1.0)
+        matching = (output[:, self.train_seq_length-1:] == labels[:, self.train_seq_length-1:])
+        correct = torch.mean(matching[ts[:, self.train_seq_length-1:] >= 0.]*1.0)
         correct_seg = torch.mean((labels == output_seg)*1.0)
         
         total_positives = torch.sum(torch.mean(labels*1.0, dim=1))
@@ -73,9 +74,10 @@ class PIBMainModel(L.LightningModule):
             start_index = max(0, i-self.train_seq_length+1)
             model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
         model_llr = model_output[..., 1] - model_output[..., 0]
-        output = torch.where(model_llr > 0, 1, 0)
+        output = torch.zeros(model_llr.shape, device=accel.device, requires_grad=False, dtype=torch.long) - 1
+        output[ts >= 0.] = torch.where(model_llr > 0, 1, 0)[ts >= 0.]
 
-        return output, labels, model_llr
+        return output, labels, model_llr, ts
 
     def test_step(self, batch, batch_idx):
         if self.ema_copy is None:

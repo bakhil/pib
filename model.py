@@ -71,8 +71,8 @@ class PIBFilTransformer(utils.PIBMainModel):
         # accel_projected_reshaped = torch.einsum('nlc->ncl', self.input_projection(accel_normalized))
         # x = torch.einsum('ncl->nlc', self.normalize_projection(accel_projected_reshaped))
         accel_filtered_nlc = torch.einsum('ncl->nlc', accel_filtered)
-        if self.fs/(4.0*self.cutoff) > 2.:
-            sample_frac = int(self.fs/(4.0*self.cutoff))
+        if self.fs/(2.0*self.cutoff) > 2.:
+            sample_frac = int(self.fs/(2.0*self.cutoff))
         else:
             sample_frac = 1
         input_batch = torch.cat([accel_filtered_nlc[:, i::sample_frac, :] for i in range(sample_frac)], dim=0)

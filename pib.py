@@ -65,7 +65,8 @@ if __name__ == '__main__':
                 else:
                     break
             '''
-            plt.plot(model_llrs[0][i], label='Model LLR')
+            # plt.plot(model_llrs[0][i], label='Model LLR')
+            plt.plot(outputs[0][i], label='Outputs')
             plt.plot(labels[0][i], label='original')
             plt.legend(fontsize='x-large')
             plt.grid()
