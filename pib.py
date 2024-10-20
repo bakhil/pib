@@ -55,9 +55,11 @@ if __name__ == '__main__':
         outputs = [returned_value[0] for returned_value in returned_values]
         labels = [returned_value[1] for returned_value in returned_values]
         model_llrs = [returned_value[2] for returned_value in returned_values]
+        ts_list = [returned_value[3] for returned_value in returned_values]
+        prev_sums = [returned_value[4] for returned_value in returned_values]
         if args.save.plot_path:
             import matplotlib.pyplot as plt
-            i = 0
+            i = 2
             '''
             while i < len(outputs[0]):
                 if labels[0][i][0] == 1:
@@ -66,12 +68,27 @@ if __name__ == '__main__':
                     break
             '''
             # plt.plot(model_llrs[0][i], label='Model LLR')
-            plt.plot(outputs[0][i], label='Outputs')
-            plt.plot(labels[0][i], label='original')
-            plt.legend(fontsize='x-large')
-            plt.grid()
-            plt.xlabel('Time', fontsize='x-large')
-            plt.ylabel('Prediction', fontsize='x-large')
+            fig, axs = plt.subplots(3, 1, squeeze=False, figsize=(10, 15))
+            axs[0, 0].plot(torch.arange(len(outputs[0][i][ts_list[0][i] >= 0.]))/250., outputs[0][i][ts_list[0][i] >= 0.], label='outputs')
+            axs[0, 0].plot(torch.arange(len(labels[0][i][ts_list[0][i] >= 0.]))/250., labels[0][i][ts_list[0][i] >= 0.], label='original')
+            axs[0, 0].legend(fontsize='x-large')
+            axs[0, 0].grid()
+            axs[0, 0].set_xlabel('Time (s)', fontsize='x-large')
+            axs[0, 0].set_ylabel('Prediction', fontsize='x-large')
+
+            axs[1, 0].plot(torch.arange(len(model_llrs[0][i][ts_list[0][i] >= 0.]))/250., model_llrs[0][i][ts_list[0][i] >= 0.], label='model llr')
+            axs[1, 0].plot(torch.arange(len(labels[0][i][ts_list[0][i] >= 0.]))/250., labels[0][i][ts_list[0][i] >= 0.], label='original')
+            axs[1, 0].legend(fontsize='x-large')
+            axs[1, 0].grid()
+            axs[1, 0].set_xlabel('Time (s)', fontsize='x-large')
+            axs[1, 0].set_ylabel('Value', fontsize='x-large')
+
+            axs[2, 0].plot(torch.arange(len(model_llrs[0][i][ts_list[0][i] >= 0.]))/250., prev_sums[0][i][ts_list[0][i] >= 0.], label='Avg sums')
+            axs[2, 0].plot(torch.arange(len(labels[0][i][ts_list[0][i] >= 0.]))/250., labels[0][i][ts_list[0][i] >= 0.], label='original')
+            axs[2, 0].legend(fontsize='x-large')
+            axs[2, 0].grid()
+            axs[2, 0].set_xlabel('Time (s)', fontsize='x-large')
+            axs[2, 0].set_ylabel('Value', fontsize='x-large')
             plt.savefig(args.save.plot_path)
 
     else:
