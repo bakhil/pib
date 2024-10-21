@@ -52,14 +52,36 @@ if __name__ == '__main__':
             raise ValueError('Checkpoint file path not provided for validate_save mode')
         trainer = L.Trainer(default_root_dir=args.train.root_dir, enable_checkpointing=False, logger=False)
         returned_values = trainer.predict(pib_model, loader_val, ckpt_path=args.model.from_checkpoint, return_predictions=True)
-        outputs = [returned_value[0] for returned_value in returned_values]
-        labels = [returned_value[1] for returned_value in returned_values]
-        model_llrs = [returned_value[2] for returned_value in returned_values]
-        ts_list = [returned_value[3] for returned_value in returned_values]
-        prev_sums = [returned_value[4] for returned_value in returned_values]
+        outputs = torch.cat([returned_value[0] for returned_value in returned_values], dim=0)
+        labels = torch.cat([returned_value[1] for returned_value in returned_values], dim=0)
+        model_llrs = torch.cat([returned_value[2] for returned_value in returned_values], dim=0)
+        ts_list = torch.cat([returned_value[3] for returned_value in returned_values], dim=0)
+        prev_sums = torch.cat([returned_value[4] for returned_value in returned_values], dim=0)
+
+        avg_latency_list = []
+        for i in range(len(outputs)):
+            transitions = torch.arange(1, len(outputs[i]), device=outputs.device, dtype=torch.long)[(labels[i][1:] - labels[i][:-1]) != 0]
+            latency_list = []
+            for j in transitions:
+                if ts_list[i][j] < 0:
+                    break
+                k = int(j + 0)   # k gets assigned to j's pointer and changes j otherwise
+                while k < len(outputs[i]):
+                    if torch.mean((outputs[i][k:k+15*250+1] == labels[i][j])*1.0) == 1.:
+                        break
+                    k += 1
+                latency_list.append((k - j) / 250.)
+            avg_latency_list.append(torch.mean(torch.tensor(latency_list)))
+        accuracy = torch.mean((outputs == labels)[ts_list > 0]*1.0)
+        print('#####################################################')
+        print(f'Average latency: {torch.mean(torch.tensor(avg_latency_list)):.3e} s')
+        print(f'Std of latency: {torch.std(torch.tensor(avg_latency_list)):.3e} s')
+        print(f'Average accuracy: {accuracy:.3f}')
+        print('#####################################################')
+
         if args.save.plot_path:
             import matplotlib.pyplot as plt
-            i = 2
+            i = torch.randint(0, len(outputs), (1,)).item()
             '''
             while i < len(outputs[0]):
                 if labels[0][i][0] == 1:
@@ -69,22 +91,22 @@ if __name__ == '__main__':
             '''
             # plt.plot(model_llrs[0][i], label='Model LLR')
             fig, axs = plt.subplots(3, 1, squeeze=False, figsize=(10, 15))
-            axs[0, 0].plot(torch.arange(len(outputs[0][i][ts_list[0][i] >= 0.]))/250., outputs[0][i][ts_list[0][i] >= 0.], label='outputs')
-            axs[0, 0].plot(torch.arange(len(labels[0][i][ts_list[0][i] >= 0.]))/250., labels[0][i][ts_list[0][i] >= 0.], label='original')
+            axs[0, 0].plot(torch.arange(len(outputs[i][ts_list[i] >= 0.]))/250., outputs[i][ts_list[i] >= 0.], label='outputs')
+            axs[0, 0].plot(torch.arange(len(labels[i][ts_list[i] >= 0.]))/250., labels[i][ts_list[i] >= 0.], label='original')
             axs[0, 0].legend(fontsize='x-large')
             axs[0, 0].grid()
             axs[0, 0].set_xlabel('Time (s)', fontsize='x-large')
             axs[0, 0].set_ylabel('Prediction', fontsize='x-large')
 
-            axs[1, 0].plot(torch.arange(len(model_llrs[0][i][ts_list[0][i] >= 0.]))/250., model_llrs[0][i][ts_list[0][i] >= 0.], label='model llr')
-            axs[1, 0].plot(torch.arange(len(labels[0][i][ts_list[0][i] >= 0.]))/250., labels[0][i][ts_list[0][i] >= 0.], label='original')
+            axs[1, 0].plot(torch.arange(len(model_llrs[i][ts_list[i] >= 0.]))/250., model_llrs[i][ts_list[i] >= 0.], label='model llr')
+            axs[1, 0].plot(torch.arange(len(labels[i][ts_list[i] >= 0.]))/250., labels[i][ts_list[i] >= 0.], label='original')
             axs[1, 0].legend(fontsize='x-large')
             axs[1, 0].grid()
             axs[1, 0].set_xlabel('Time (s)', fontsize='x-large')
             axs[1, 0].set_ylabel('Value', fontsize='x-large')
 
-            axs[2, 0].plot(torch.arange(len(model_llrs[0][i][ts_list[0][i] >= 0.]))/250., prev_sums[0][i][ts_list[0][i] >= 0.], label='Avg sums')
-            axs[2, 0].plot(torch.arange(len(labels[0][i][ts_list[0][i] >= 0.]))/250., labels[0][i][ts_list[0][i] >= 0.], label='original')
+            axs[2, 0].plot(torch.arange(len(model_llrs[i][ts_list[i] >= 0.]))/250., prev_sums[i][ts_list[i] >= 0.], label='Avg sums')
+            axs[2, 0].plot(torch.arange(len(labels[i][ts_list[i] >= 0.]))/250., labels[i][ts_list[i] >= 0.], label='original')
             axs[2, 0].legend(fontsize='x-large')
             axs[2, 0].grid()
             axs[2, 0].set_xlabel('Time (s)', fontsize='x-large')
