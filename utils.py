@@ -9,14 +9,14 @@ import copy
 class PIBMainModel(L.LightningModule):
     def __init__(self, ignore_initial: int = 100, ema_decay: float = 0.999, 
                     optimizer: str = '', lr: float = 0.001,
-                    train_seq_length: int = 1000, **kwargs):
+                    train_seq_len: int = 1000, **kwargs):
         super().__init__()
         self.ignore_initial = ignore_initial
         self.ema_copy = None
         self.ema_decay = ema_decay
         self.optimizer = optimizer
         self.lr = lr
-        self.train_seq_length = train_seq_length
+        self.train_seq_length = train_seq_len
         self.register_buffer('num_train_labels', torch.tensor([0, 0], dtype=torch.long))
         self.save_hyperparameters()
 
@@ -37,11 +37,26 @@ class PIBMainModel(L.LightningModule):
             for p in self.ema_copy.parameters():
                 p.requires_grad = False
         accel, ts, labels = batch
+        # model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
+        # for i in range(self.train_seq_length-1, accel.shape[1]):
+        #     start_index = max(0, i-self.train_seq_length+1)
+        #     model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
+        # model_llr = model_output[..., 1] - model_output[..., 0]
         model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
+        model_output[:, :self.train_seq_length, :] = self.ema_copy(accel[:, :self.train_seq_length], ts[:, :self.train_seq_length]).detach()
+        output = torch.zeros(accel.shape[0], accel.shape[1], device=accel.device, requires_grad=False, dtype=torch.long)
+        model_llr = torch.zeros(output.shape, device=accel.device, requires_grad=False)
+        prev_sum = torch.zeros(output.shape, device=accel.device, requires_grad=False)
         for i in range(self.train_seq_length-1, accel.shape[1]):
             start_index = max(0, i-self.train_seq_length+1)
             model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
-        model_llr = model_output[..., 1] - model_output[..., 0]
+            model_llr[:, i] = model_output[:, i, 1] - model_output[:, i, 0]
+            prev_sum[:, i] = torch.mean(model_llr[:, i+1-100:i+1], dim=1)
+            output[:, i] = output[:, i-1]
+            output[:, i][prev_sum[:, i] > 7.5]  = 1
+            output[:, i][prev_sum[:, i] < -7.5] = 0     
+        
+        
         output = torch.where(model_llr > 0, 1, 0)
         output_seg = torch.where(torch.mean(model_llr[:, self.train_seq_length-1:], dim=1) > 0, 1, 0)[:, None]
 

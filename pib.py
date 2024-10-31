@@ -17,9 +17,13 @@ if __name__ == '__main__':
     if args.mode == 'train':
         pib_model = get_model(args.model.name, **args.model)
         
-        dataset = PIBDataset(mode=args.mode, data_path=args.data.data_path, train_validate_test_split=args.data.train_validate_test_split)
+        dataset = PIBDataset(mode=args.mode, data_path=args.data.data_path, 
+                             train_validate_test_split=args.data.train_validate_test_split,
+                             train_seq_len=args.model.train_seq_len)
         loader = DataLoader(dataset, batch_size=args.data.train_batch_size, shuffle=True)
-        dataset_val = PIBDataset(mode='validate', data_path=args.data.data_path, train_validate_test_split=args.data.train_validate_test_split)
+        dataset_val = PIBDataset(mode='validate', data_path=args.data.data_path, 
+                                 train_validate_test_split=args.data.train_validate_test_split,
+                                 train_seq_len=args.model.train_seq_len)
         loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
 
         trainer = L.Trainer(max_epochs=args.train.max_epochs, default_root_dir=args.train.root_dir, 
@@ -33,7 +37,9 @@ if __name__ == '__main__':
     elif args.mode == 'validate':
         pib_model = get_model(args.model.name, **args.model)
 
-        dataset_val = PIBDataset(mode=args.mode, data_path=args.data.data_path, train_validate_test_split=args.data.train_validate_test_split)
+        dataset_val = PIBDataset(mode=args.mode, data_path=args.data.data_path, 
+                                 train_validate_test_split=args.data.train_validate_test_split,
+                                 train_seq_len=args.model.train_seq_len)
         loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
         if args.model.from_checkpoint is None:
             raise ValueError('Checkpoint file path not provided for validation mode')
@@ -46,7 +52,9 @@ if __name__ == '__main__':
     elif args.mode == 'validate_save':
         pib_model = get_model(args.model.name, **args.model)
 
-        dataset_val = PIBDataset(mode='validate', data_path=args.data.data_path, train_validate_test_split=args.data.train_validate_test_split)
+        dataset_val = PIBDataset(mode='validate', data_path=args.data.data_path, 
+                                 train_validate_test_split=args.data.train_validate_test_split,
+                                 train_seq_len=args.model.train_seq_len)
         loader_val = DataLoader(dataset_val, batch_size=args.data.validate_batch_size, shuffle=False)
         if args.model.from_checkpoint is None:
             raise ValueError('Checkpoint file path not provided for validate_save mode')
@@ -59,6 +67,7 @@ if __name__ == '__main__':
         prev_sums = torch.cat([returned_value[4] for returned_value in returned_values], dim=0)
 
         avg_latency_list = []
+        latency_lists = []
         for i in range(len(outputs)):
             transitions = torch.arange(1, len(outputs[i]), device=outputs.device, dtype=torch.long)[(labels[i][1:] - labels[i][:-1]) != 0]
             latency_list = []
@@ -71,14 +80,15 @@ if __name__ == '__main__':
                         break
                     k += 1
                 latency_list.append((k - j) / 250.)
-            avg_latency_list.append(torch.mean(torch.tensor(latency_list)))
+            if len(latency_list) > 0:
+                avg_latency_list.append(torch.mean(torch.tensor(latency_list)))
+                latency_lists.append(latency_list)
         accuracy = torch.mean((outputs == labels)[ts_list > 0]*1.0)
         print('#####################################################')
         print(f'Average latency: {torch.mean(torch.tensor(avg_latency_list)):.3e} s')
         print(f'Std of latency: {torch.std(torch.tensor(avg_latency_list)):.3e} s')
         print(f'Average accuracy: {accuracy:.3f}')
         print('#####################################################')
-
         if args.save.plot_path:
             import matplotlib.pyplot as plt
             i = torch.randint(0, len(outputs), (1,)).item()
@@ -97,6 +107,7 @@ if __name__ == '__main__':
             axs[0, 0].grid()
             axs[0, 0].set_xlabel('Time (s)', fontsize='x-large')
             axs[0, 0].set_ylabel('Prediction', fontsize='x-large')
+            axs[0, 0].set_title(f'Sample index {i}', fontsize='x-large')
 
             axs[1, 0].plot(torch.arange(len(model_llrs[i][ts_list[i] >= 0.]))/250., model_llrs[i][ts_list[i] >= 0.], label='model llr')
             axs[1, 0].plot(torch.arange(len(labels[i][ts_list[i] >= 0.]))/250., labels[i][ts_list[i] >= 0.], label='original')
