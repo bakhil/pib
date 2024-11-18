@@ -92,10 +92,10 @@ class PIBMainModel(L.LightningModule):
             start_index = max(0, i-self.train_seq_length+1)
             model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
             model_llr[:, i] = model_output[:, i, 1] - model_output[:, i, 0]
-            prev_sum[:, i] = torch.mean(model_llr[:, i+1-100:i+1], dim=1)
+            prev_sum[:, i] = torch.mean(model_llr[:, i+1-175:i+1], dim=1)
             output[:, i] = output[:, i-1]
-            output[:, i][prev_sum[:, i] > 7.5]  = 1
-            output[:, i][prev_sum[:, i] < -7.5] = 0
+            output[:, i][prev_sum[:, i] > 4.0]  = 1
+            output[:, i][prev_sum[:, i] < -4.0] = 0
         # model_llr = model_output[..., 1] - model_output[..., 0]
         # output = torch.zeros(model_llr.shape, device=accel.device, requires_grad=False, dtype=torch.long) - 1
         # output[ts >= 0.] = torch.where(model_llr > 0, 1, 0)[ts >= 0.]
