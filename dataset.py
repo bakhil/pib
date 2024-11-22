@@ -20,14 +20,19 @@ class PIBDatasetMain(Dataset):
         self.num_samples = len(data)
         self.seq_lens = [len(data[i]['ts']) for i in range(self.num_samples)]
         self.max_len = max(self.seq_lens)
-
+        if 'chunk_id' in data[0]:
+            self.has_chunks = True
+            self.chunk_ids = [data[i]['chunk_id'] for i in range(self.num_samples)]
+        else:
+            self.has_chunks = False
         # check if segmented problem or streaming problem based on labels
         if 'label' in data[0]:
             label_key = 'label'    # segmented
         elif 'labels' in data[0]:
             label_key = 'labels'   # streaming
         else:
-            raise ValueError('Unknown data format!!')
+            # raise ValueError('Unknown data format!!')
+            label_key = 'label_not_present'
         
         self.accel = torch.zeros(self.num_samples, self.max_len, 3)
         self.ts = torch.zeros(self.num_samples, self.max_len) - 1.
@@ -36,13 +41,19 @@ class PIBDatasetMain(Dataset):
             self.accel[i, :self.seq_lens[i], :] = torch.tensor(data[i]['accel'])
             self.ts[i, :self.seq_lens[i]] = torch.tensor(data[i]['ts'])
             # For segmented problem, integer gets broadcasted to all timestamps
-            self.labels[i, :self.seq_lens[i]] = torch.tensor(data[i][label_key])
+            if label_key == 'label_not_present':
+                self.labels[i, :self.seq_lens[i]] = -1.
+            else:
+                self.labels[i, :self.seq_lens[i]] = torch.tensor(data[i][label_key])
 
     def __len__(self):
         return self.num_samples
     
     def __getitem__(self, idx):
-        return self.accel[idx], self.ts[idx], self.labels[idx]
+        if not self.has_chunks:
+            return self.accel[idx], self.ts[idx], self.labels[idx]
+        else:
+            return self.accel[idx], self.ts[idx], self.labels[idx], self.chunk_ids[idx]
 
 class PIBDataset(Dataset):
     '''

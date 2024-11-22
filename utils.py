@@ -36,7 +36,10 @@ class PIBMainModel(L.LightningModule):
             self.ema_copy = copy.deepcopy(self)
             for p in self.ema_copy.parameters():
                 p.requires_grad = False
-        accel, ts, labels = batch
+        if len(batch) == 4:
+            accel, ts, labels, chunk_ids = batch
+        else:
+            accel, ts, labels = batch
         # model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
         # for i in range(self.train_seq_length-1, accel.shape[1]):
         #     start_index = max(0, i-self.train_seq_length+1)
@@ -82,7 +85,12 @@ class PIBMainModel(L.LightningModule):
         self.log('val_acc_balanced', acc_balanced.item())
 
     def predict_step(self, batch, batch_idx):
-        accel, ts, labels = batch
+        if len(batch) == 4:
+            accel, ts, labels, chunk_ids = batch
+            has_chunks = True
+        else:
+            accel, ts, labels = batch
+            has_chunks = False
         model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
         # model_output[:, :self.train_seq_length, :] = self.ema_copy(accel[:, :self.train_seq_length], ts[:, :self.train_seq_length]).detach()
         output = torch.zeros(accel.shape[0], accel.shape[1], device=accel.device, requires_grad=False, dtype=torch.long)
@@ -100,7 +108,10 @@ class PIBMainModel(L.LightningModule):
         # output = torch.zeros(model_llr.shape, device=accel.device, requires_grad=False, dtype=torch.long) - 1
         # output[ts >= 0.] = torch.where(model_llr > 0, 1, 0)[ts >= 0.]
 
-        return output, labels, model_llr, ts, prev_sum
+        if has_chunks:
+            return output, labels, model_llr, ts, prev_sum, chunk_ids
+        else:
+            return output, labels, model_llr, ts, prev_sum
 
     def test_step(self, batch, batch_idx):
         if self.ema_copy is None:
