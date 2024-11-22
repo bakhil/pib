@@ -20,6 +20,7 @@ class PIBDatasetMain(Dataset):
         self.num_samples = len(data)
         self.seq_lens = [len(data[i]['ts']) for i in range(self.num_samples)]
         self.max_len = max(self.seq_lens)
+        self.subjects = [data[i]['subject'] for i in range(self.num_samples)]
         if 'chunk_id' in data[0]:
             self.has_chunks = True
             self.chunk_ids = [data[i]['chunk_id'] for i in range(self.num_samples)]
@@ -35,11 +36,11 @@ class PIBDatasetMain(Dataset):
             label_key = 'label_not_present'
         
         self.accel = torch.zeros(self.num_samples, self.max_len, 3)
-        self.ts = torch.zeros(self.num_samples, self.max_len) - 1.
+        self.ts = torch.zeros(self.num_samples, self.max_len, dtype=torch.float64) - 1.
         self.labels = torch.zeros(self.num_samples, self.max_len, dtype=torch.long)
         for i in range(self.num_samples):
             self.accel[i, :self.seq_lens[i], :] = torch.tensor(data[i]['accel'])
-            self.ts[i, :self.seq_lens[i]] = torch.tensor(data[i]['ts'])
+            self.ts[i, :self.seq_lens[i]] = torch.tensor(data[i]['ts'], dtype=torch.float64)
             # For segmented problem, integer gets broadcasted to all timestamps
             if label_key == 'label_not_present':
                 self.labels[i, :self.seq_lens[i]] = -1.
@@ -51,9 +52,9 @@ class PIBDatasetMain(Dataset):
     
     def __getitem__(self, idx):
         if not self.has_chunks:
-            return self.accel[idx], self.ts[idx], self.labels[idx]
+            return self.accel[idx], self.ts[idx], self.labels[idx], self.subjects[idx]
         else:
-            return self.accel[idx], self.ts[idx], self.labels[idx], self.chunk_ids[idx]
+            return self.accel[idx], self.ts[idx], self.labels[idx], self.subjects[idx], self.chunk_ids[idx]
 
 class PIBDataset(Dataset):
     '''
