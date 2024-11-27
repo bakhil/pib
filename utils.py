@@ -93,17 +93,21 @@ class PIBMainModel(L.LightningModule):
             has_chunks = False
         model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
         # model_output[:, :self.train_seq_length, :] = self.ema_copy(accel[:, :self.train_seq_length], ts[:, :self.train_seq_length]).detach()
-        output = torch.zeros(accel.shape[0], accel.shape[1], device=accel.device, requires_grad=False, dtype=torch.long)
+        output = torch.ones(accel.shape[0], accel.shape[1], device=accel.device, requires_grad=False, dtype=torch.long)
         model_llr = torch.zeros(output.shape, device=accel.device, requires_grad=False)
         prev_sum = torch.zeros(output.shape, device=accel.device, requires_grad=False)
+        next_index = self.ignore_initial+1
         for i in range(self.train_seq_length-1, accel.shape[1]):
             start_index = max(0, i-self.train_seq_length+1)
-            model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
-            model_llr[:, i] = model_output[:, i, 1] - model_output[:, i, 0]
-            prev_sum[:, i] = torch.mean(model_llr[:, i+1-175:i+1], dim=1)
-            output[:, i] = output[:, i-1]
-            output[:, i][prev_sum[:, i] > 4.0]  = 1
-            output[:, i][prev_sum[:, i] < -4.0] = 0
+            model_output[:, next_index:i+1, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -(i+1-next_index):, :].detach()
+            model_llr[:, next_index:i+1] = model_output[:, next_index:i+1, 1] - model_output[:, next_index:i+1, 0]
+            for j in range(next_index, i+1):
+                prev_sum[:, j] = torch.mean(model_llr[:, j+1-100:j+1], dim=1)
+            output[:, next_index:i+1] = output[:, next_index-1:i]
+            output[:, next_index:i+1][prev_sum[:, next_index:i+1] > 4.0]  = 1
+            output[:, next_index:i+1][prev_sum[:, next_index:i+1] < -4.0] = 0
+
+            next_index = i+1
         # model_llr = model_output[..., 1] - model_output[..., 0]
         # output = torch.zeros(model_llr.shape, device=accel.device, requires_grad=False, dtype=torch.long) - 1
         # output[ts >= 0.] = torch.where(model_llr > 0, 1, 0)[ts >= 0.]
