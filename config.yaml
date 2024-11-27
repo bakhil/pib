@@ -1,12 +1,15 @@
 lightning_seed: 42
 model:
-    name: PIBTransformer
-    d_model: 20
+    name: PIBFilTransformer
+    d_model: 32
     nhead: 4
     num_layers: 5
-    dim_feedforward: 50
+    dim_feedforward: 128
+    fil_size: 15
+    cutoff: 15
+    fs: 250
     dropout: 0.1
-    ignore_initial: 99
+    ignore_initial: 499
     ema_decay: 0.999
     optimizer: Adam
     lr: 0.001
