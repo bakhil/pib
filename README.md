@@ -51,8 +51,8 @@ variables are not set.
 ### Running a model
 
 We provide two pre-trained checkpoints.
-One is a small model with around 3.6k parameters more suitable for
-embedded devices, and the second is a larger model
+One is a [small model](https://drive.google.com/file/d/1D2DrP8mEPdK01d1eFYr6-BvLHCjewXFB/view?usp=sharing) with around 3.6k parameters more suitable for
+embedded devices, and the second is a [larger model](https://drive.google.com/file/d/1hQuvOcnFQF0HKBz-9I_sapjDWQ36nnc2/view?usp=sharing)
 with around 63.8k parameters.
 The performance is very similar on both, so perhaps it's not worth it
 to use the larger model.
