@@ -1,26 +1,28 @@
-lightning_seed: 42
+lightning_seed: 10
 model:
-    name: PIBFilTransformer
-    d_model: 32
-    nhead: 4
-    num_layers: 5
-    dim_feedforward: 128
+    name: PIBFilTransformer_v2
+    d_model: 8
+    nhead: 2
+    num_layers: 4
+    dim_feedforward: 32
     fil_size: 15
-    cutoff: 15
-    fs: 250
-    dropout: 0.1
+    cutoff: 8.0
+    fs: 250.0
+    dropout: 0.01
     ignore_initial: 499
-    ema_decay: 0.999
+    ema_decay: 0.0
     optimizer: Adam
     lr: 0.001
-    train_seq_len: 1000
+    train_seq_len: 1005
+    hysteresis_value: 3.0
+    avg_predict_over: 100
 train:
-    max_epochs: 3
+    max_epochs: 19
     root_dir: ./results/transformer
     accumulate_grad_batches: 1
     precision: 16-mixed
 data:
-    data_path: ./data/icassp-person-in-bed-track-1/train.json
+    data_path: ./data/person-in-bed-streaming-detection/train.json
     train_validate_test_split: [14, 3, 3]
     train_batch_size: 256
     validate_batch_size: 512

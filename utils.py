@@ -9,7 +9,8 @@ import copy
 class PIBMainModel(L.LightningModule):
     def __init__(self, ignore_initial: int = 100, ema_decay: float = 0.999, 
                     optimizer: str = '', lr: float = 0.001,
-                    train_seq_len: int = 1000, **kwargs):
+                    train_seq_len: int = 1000, avg_predict_over=100, 
+                    hysteresis_value=3.0, **kwargs):
         super().__init__()
         self.ignore_initial = ignore_initial
         self.ema_copy = None
@@ -17,15 +18,13 @@ class PIBMainModel(L.LightningModule):
         self.optimizer = optimizer
         self.lr = lr
         self.train_seq_length = train_seq_len
-        self.register_buffer('num_train_labels', torch.tensor([0, 0], dtype=torch.long))
+        self.avg_predict_over = avg_predict_over
+        self.hysteresis_value = hysteresis_value
         self.save_hyperparameters()
 
     def training_step(self, batch, batch_idx):
         accel, ts, labels = batch
         output = self(accel, ts)
-        self.num_train_labels[0] += torch.sum(labels == 0)
-        self.num_train_labels[1] += torch.sum(labels == 1)
-        # weights = self.num_train_labels*2.0 / torch.sum(self.num_train_labels)
         loss = F.cross_entropy(output[:, self.ignore_initial:].reshape(-1, 2), labels[:, self.ignore_initial:].reshape(-1))
         self.log('train_loss', loss.item())
         return loss
@@ -47,17 +46,20 @@ class PIBMainModel(L.LightningModule):
         # model_llr = model_output[..., 1] - model_output[..., 0]
         model_output = torch.zeros(accel.shape[0], accel.shape[1], 2, device=accel.device, requires_grad=False)
         model_output[:, :self.train_seq_length, :] = self.ema_copy(accel[:, :self.train_seq_length], ts[:, :self.train_seq_length]).detach()
-        output = torch.zeros(accel.shape[0], accel.shape[1], device=accel.device, requires_grad=False, dtype=torch.long)
-        model_llr = torch.zeros(output.shape, device=accel.device, requires_grad=False)
-        prev_sum = torch.zeros(output.shape, device=accel.device, requires_grad=False)
+        output_hys = torch.zeros(accel.shape[0], accel.shape[1], device=accel.device, requires_grad=False, dtype=torch.long)
+        model_llr = torch.zeros(output_hys.shape, device=accel.device, requires_grad=False)
+        prev_sum = torch.zeros(output_hys.shape, device=accel.device, requires_grad=False)
         for i in range(self.train_seq_length-1, accel.shape[1]):
-            start_index = max(0, i-self.train_seq_length+1)
-            model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
-            model_llr[:, i] = model_output[:, i, 1] - model_output[:, i, 0]
-            prev_sum[:, i] = torch.mean(model_llr[:, i+1-100:i+1], dim=1)
-            output[:, i] = output[:, i-1]
-            output[:, i][prev_sum[:, i] > 7.5]  = 1
-            output[:, i][prev_sum[:, i] < -7.5] = 0     
+            if hasattr(self, 'sample_frac') and (i+1) % self.sample_frac != 0:
+                model_llr[:, i] = model_llr[:, i-1]
+            else:
+                start_index = max(0, i-self.train_seq_length+1)
+                model_output[:, i, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -1, :].detach()
+                model_llr[:, i] = model_output[:, i, 1] - model_output[:, i, 0]
+            prev_sum[:, i] = torch.mean(model_llr[:, i+1-self.avg_predict_over:i+1], dim=1)
+            output_hys[:, i] = output_hys[:, i-1]
+            output_hys[:, i][prev_sum[:, i] > self.hysteresis_value]  = 1
+            output_hys[:, i][prev_sum[:, i] < -self.hysteresis_value] = 0     
         
         
         output = torch.where(model_llr > 0, 1, 0)
@@ -67,6 +69,9 @@ class PIBMainModel(L.LightningModule):
         correct = torch.mean(matching[ts[:, self.train_seq_length-1:] >= 0.]*1.0)
         correct_seg = torch.mean((labels == output_seg)*1.0)
         
+        matching_hys = (output_hys[:, self.train_seq_length-1:] == labels[:, self.train_seq_length-1:])
+        correct_hys = torch.mean(matching_hys[ts[:, self.train_seq_length-1:] >= 0.]*1.0)
+
         total_positives = torch.sum(torch.mean(labels*1.0, dim=1))
         total_negatives = torch.sum(1-torch.mean(labels*1.0, dim=1))
 
@@ -78,6 +83,7 @@ class PIBMainModel(L.LightningModule):
         acc_balanced = (tpr + tnr) / 2.
 
         self.log('val_acc', correct.item())
+        self.log('val_acc_hys', correct_hys.item())
         self.log('val_acc_segmented', correct_seg.item())
         self.log('val_abs_llr', torch.mean(torch.abs(model_llr[:, self.train_seq_length-1:])).item())
         self.log('val_tpr', tpr.item())
@@ -102,10 +108,10 @@ class PIBMainModel(L.LightningModule):
             model_output[:, next_index:i+1, :] = self.ema_copy(accel[:, start_index:i+1], ts[:, start_index:i+1])[:, -(i+1-next_index):, :].detach()
             model_llr[:, next_index:i+1] = model_output[:, next_index:i+1, 1] - model_output[:, next_index:i+1, 0]
             for j in range(next_index, i+1):
-                prev_sum[:, j] = torch.mean(model_llr[:, j+1-75:j+1], dim=1)
+                prev_sum[:, j] = torch.mean(model_llr[:, j+1-self.avg_predict_over:j+1], dim=1)
             output[:, next_index:i+1] = output[:, next_index-1:i]
-            output[:, next_index:i+1][prev_sum[:, next_index:i+1] > 3.0]  = 1
-            output[:, next_index:i+1][prev_sum[:, next_index:i+1] < -3.0] = 0
+            output[:, next_index:i+1][prev_sum[:, next_index:i+1] > self.hysteresis_value]  = 1
+            output[:, next_index:i+1][prev_sum[:, next_index:i+1] < -self.hysteresis_value] = 0
 
             next_index = i+1
         # model_llr = model_output[..., 1] - model_output[..., 0]
@@ -198,6 +204,8 @@ def get_parser():
     parser.add_argument('--model.fil_size',         help='filter size for PIBFilTransformer', type=int)
     parser.add_argument('--model.cutoff',           help='cutoff frequency for PIBFilTransformer', type=float)
     parser.add_argument('--model.fs',               help='sampling frequency for PIBFilTransformer', type=float)
+    parser.add_argument('--model.avg_predict_over', help='average predictions over this many samples', type=int)
+    parser.add_argument('--model.hysteresis_value', help='hysteresis threshold for predictions', type=float)
 
 
     # Training arguments

@@ -13,6 +13,8 @@ def register_model(cls):
     return cls
 def get_model(model_name, **kwargs):
     return _model_list[model_name](**kwargs)
+def get_model_class(model_name):
+    return _model_list[model_name]
 
 @register_model
 class PIBTransformer(utils.PIBMainModel):
@@ -93,4 +95,56 @@ class PIBFilTransformer(utils.PIBMainModel):
         for i in range(sample_frac):
             output[:, i::sample_frac, :] = downsampled_output[i*accel.shape[0]:(i+1)*accel.shape[0], :, :]
         return output
-        
+      
+@register_model
+class PIBFilTransformer_v2(utils.PIBMainModel):
+    def __init__(self, d_model, nhead, num_layers, dim_feedforward, fil_size,
+                 cutoff, fs, dropout=0.1, **kwargs):
+        super().__init__(**kwargs)
+
+        # Create filter taps
+        self.fil_size = fil_size
+        self.cutoff = cutoff
+        self.fs = fs
+        self.register_buffer('filter_taps', 
+                             torch.tensor(signal.firwin(self.fil_size, cutoff=self.cutoff, fs=self.fs), 
+                                          device=self.device, requires_grad=False,
+                                          dtype=torch.float)[None, None, :].expand(3, 1, self.fil_size).detach().clone(), 
+                             persistent=False
+                            )
+
+        if self.fs/(2.0*self.cutoff) > 2.:
+            self.sample_frac = int(self.fs/(2.0*self.cutoff))
+        else:
+            self.sample_frac = 1
+
+        # Create model
+        self.input_projection = nn.Linear(3, d_model)
+        self.normalize_projection = nn.LayerNorm(d_model)
+        encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward,
+                                                    dropout, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers)
+        self.output_projection = nn.Linear(d_model, 2)
+
+        # Create position encoding
+        seq_len = self.train_seq_length // self.sample_frac
+        pos = torch.arange(seq_len-1, -1, -1, device=self.device)[:, None]
+        den = torch.exp(-torch.arange(0, d_model, 2, device=self.device)[None, :] * torch.log(torch.tensor([10000])).item() / d_model) 
+        pos_enc = torch.zeros(seq_len, d_model, device=self.device)
+        pos_enc[:, 0::2] = torch.sin(pos * den)
+        pos_enc[:, 1::2] = torch.cos(pos * den)
+        pos_enc = pos_enc[None, :, :]
+        self.register_buffer('pos_enc', pos_enc, persistent=False)
+
+    def forward(self, accel, ts=None):
+        accel_normalized = F.normalize(torch.einsum('nlc->ncl', accel-torch.mean(accel, dim=1, keepdim=True)), dim=2)
+        accel_filtered = F.conv1d(accel_normalized, weight=self.filter_taps, padding=self.fil_size-1, groups=3)[..., :accel.shape[1]]
+        accel_filtered_nlc = torch.einsum('ncl->nlc', accel_filtered)
+
+        input_batch = accel_filtered_nlc[:, (self.train_seq_length-1)%self.sample_frac::self.sample_frac, :]
+        x = self.normalize_projection(self.input_projection(input_batch))
+        x = x + self.pos_enc
+
+        transformer_output = self.transformer(x, mask=nn.Transformer.generate_square_subsequent_mask(x.shape[1], device=x.device), is_causal=True)
+        downsampled_output = self.output_projection(transformer_output)
+        return torch.repeat_interleave(downsampled_output, self.sample_frac, dim=1)
